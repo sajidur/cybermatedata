@@ -8,7 +8,6 @@ using System.Linq;
 
 public class OpenAlexRecord
 {
-    public int SI { get; set; }
     public int Unnamed_0 { get; set; }
     public string OpenAlex_id { get; set; }
     public string Name { get; set; }
@@ -42,7 +41,6 @@ public class Program
             {
                 var record = new OpenAlexRecord
                 {
-                    SI = csv.GetField<int>("SI"),
                     Unnamed_0 = csv.GetField<int>("Unnamed: 0"),
                     OpenAlex_id = csv.GetField<string>("OpenAlex_id"),
                     Name = csv.GetField<string>("Name"),
@@ -55,13 +53,6 @@ public class Program
                     Tp_connections = ParseList(csv.GetField<string>("Tp_connections"))
                 };
                 records.Add(record);
-            }
-
-            // Write output to a new CSV file
-            using (var writer = new StreamWriter(outputCsvPath))
-            using (var csvWriter = new CsvWriter(writer, new CsvConfiguration(CultureInfo.InvariantCulture)))
-            {
-                csvWriter.WriteRecords(records);
             }
 
             Console.WriteLine("CSV processed successfully!");
