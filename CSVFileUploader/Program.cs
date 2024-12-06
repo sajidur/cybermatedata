@@ -190,6 +190,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.Extensions.Configuration;
@@ -250,40 +251,41 @@ public class Program
         try
         {
             // Load configuration
-            var builder = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-            Configuration = builder.Build();
+            //var builder = new ConfigurationBuilder()
+            //    .SetBasePath(Directory.GetCurrentDirectory())
+            //    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+            //Configuration = builder.Build();
 
-            var connectionString = Configuration.GetConnectionString("DefaultConnection");
-            if (string.IsNullOrEmpty(connectionString))
-            {
-                throw new Exception("Connection string is missing or invalid.");
-            }
+            //var connectionString = Configuration.GetConnectionString("DefaultConnection");
+            //if (string.IsNullOrEmpty(connectionString))
+            //{
+            //    throw new Exception("Connection string is missing or invalid.");
+            //}
 
             var inputCsvPath = "complete_data.csv";
 
             var records = ReadCsv(inputCsvPath);
-           
+
             //foreach (var record in records) {
 
 
-                //foreach (var row in record.Tp_connections) {
-                //    var tpconnections = new List<TpConnection>();
-                //    tpconnections= ParseTpConnections(row,record.Id);
-                //    foreach (var connection in tpconnections) { 
-                //    Console.WriteLine(connection.SerialNo);
-                //    }
+            //foreach (var row in record.Tp_connections) {
+            //    var tpconnections = new List<TpConnection>();
+            //    tpconnections= ParseTpConnections(row,record.Id);
+            //    foreach (var connection in tpconnections) { 
+            //    Console.WriteLine(connection.SerialNo);
+            //    }
 
 
-                //}
+            //}
 
-                //var top_terms = ParseTopTerms(record.top_terms, record.Id);
-                //Console.WriteLine(top_terms.Count);
+            //var top_terms = ParseTopTerms(record.top_terms, record.Id);
+            //Console.WriteLine(top_terms.Count);
 
 
             //    break;
             //}
+            string connectionString = "Server=MYSQL5050.site4now.net;Database=db_a66689_cyberma;Uid=a66689_cyberma;Pwd=Root@pass1;";
             InsertDataIntoMySql(records, connectionString);
 
             Console.WriteLine("Data inserted into MySQL successfully!");
@@ -335,80 +337,122 @@ public class Program
         using (var connection = new MySqlConnection(connectionString))
         {
             connection.Open();
-            var openAlexQuery = @"INSERT INTO openalexrecords(Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid,publications_list, vec)
-        VALUES 
-        (@Id, @Unnamed_0, @OpenAlex_id, @Name, @TotalPublications, @FirstAuthorPublications, @Orcid,@PublicationsList, @Vec)";
 
-            var topTermsQuery = @"
-                INSERT INTO topterms (Id, OpenAlexRecordId, `Key`, Weight)
-                VALUES (@Id, @OpenAlexRecordId, @Key, @Weight)";
-
-            var tpConnectionsQuery = @"
-                    INSERT INTO tpconnections (Id, OpenAlexRecordId, SerialNo, Url, Weight, Topic)
-                    VALUES (@Id, @OpenAlexRecordId, @SerialNo, @Url, @Weight, @Topic)";
-            foreach (var record in records)
+            using (var transaction = connection.BeginTransaction())
             {
-                // Insert OpenAlexRecord
-               
-
-                using (var command = new MySqlCommand(openAlexQuery, connection))
+                try
                 {
-                    command.Parameters.AddWithValue("@Id", record.Id);
-                    command.Parameters.AddWithValue("@Unnamed_0", record.Unnamed_0);
-                    command.Parameters.AddWithValue("@OpenAlex_id", record.OpenAlex_id);
-                    command.Parameters.AddWithValue("@Name", record.Name);
-                    command.Parameters.AddWithValue("@TotalPublications", record.total_no_publications);
-                    command.Parameters.AddWithValue("@FirstAuthorPublications", record.no_publications_first_author);
-                    command.Parameters.AddWithValue("@Orcid", record.orcid);
-                    command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list ?? new List<string>()));
-                    command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec ?? new List<double>()));
-                    command.ExecuteNonQuery();
-                }
-
-                // Insert TopTerms
-                if (record.top_terms != null)
-                {
-                    var topTerms = ParseTopTerms(record.top_terms, record.Id);
-                    foreach (var term in topTerms)
+                    foreach (var record in records)
                     {
+                        // Insert into OpenAlexRecord
+                        var openAlexQuery = @"
+                    INSERT INTO openalexrecords 
+                    (Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid, publications_list, vec) 
+                    VALUES (@Id, @Unnamed_0, @OpenAlex_id, @Name, @TotalPublications, @FirstAuthorPublications, @Orcid, @PublicationsList, @Vec);";
 
-                        using (var command = new MySqlCommand(topTermsQuery, connection))
+                        using (var command = new MySqlCommand(openAlexQuery, connection, transaction))
                         {
-                            command.Parameters.AddWithValue("@Id", term.Id);
-                            command.Parameters.AddWithValue("@OpenAlexRecordId", record.Id);
-                            command.Parameters.AddWithValue("@Key", term.Key);
-                            command.Parameters.AddWithValue("@Weight", term.Weight);
+                            command.Parameters.AddWithValue("@Id", record.Id);
+                            command.Parameters.AddWithValue("@Unnamed_0", record.Unnamed_0);
+                            command.Parameters.AddWithValue("@OpenAlex_id", record.OpenAlex_id);
+                            command.Parameters.AddWithValue("@Name", record.Name);
+                            command.Parameters.AddWithValue("@TotalPublications", record.total_no_publications);
+                            command.Parameters.AddWithValue("@FirstAuthorPublications", record.no_publications_first_author);
+                            command.Parameters.AddWithValue("@Orcid", record.orcid);
+                            command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list ?? new List<string>()));
+                            command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec ?? new List<double>()));
+
                             command.ExecuteNonQuery();
                         }
-                    }
-                }
 
-                // Insert TpConnections
-                foreach (var connectionItem in record.Tp_connections ?? new List<string>())
-                {
-                    var tpConnections = ParseTpConnections(connectionItem, record.Id);
-                    if (tpConnections != null)
-                    {
-                        foreach (var tp in tpConnections)
+                        // Bulk Insert TopTerms
+                        if (record.top_terms != null)
                         {
+                            var topTerms = ParseTopTerms(record.top_terms, record.Id);
+                            var topTermsQuery = new StringBuilder("INSERT INTO topterms (Id, OpenAlexRecordId, `Key`, Weight) VALUES ");
 
-                            using (var command = new MySqlCommand(tpConnectionsQuery, connection))
+                            var parameters = new List<MySqlParameter>();
+                            int paramIndex = 0;
+
+                            foreach (var term in topTerms)
                             {
-                                command.Parameters.AddWithValue("@Id", tp.Id);
-                                command.Parameters.AddWithValue("@OpenAlexRecordId", record.Id);
-                                command.Parameters.AddWithValue("@SerialNo", tp.SerialNo);
-                                command.Parameters.AddWithValue("@Url", tp.Url);
-                                command.Parameters.AddWithValue("@Weight", tp.Weight);
-                                command.Parameters.AddWithValue("@Topic", tp.Topic);
+                                topTermsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @Key{paramIndex}, @Weight{paramIndex}),");
+
+                                parameters.Add(new MySqlParameter($"@Id{paramIndex}", term.Id));
+                                parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
+                                parameters.Add(new MySqlParameter($"@Key{paramIndex}", term.Key));
+                                parameters.Add(new MySqlParameter($"@Weight{paramIndex}", term.Weight));
+
+                                paramIndex++;
+                            }
+
+                            // Remove trailing comma and execute
+                            topTermsQuery.Length--;
+                            topTermsQuery.Append(";");
+
+                            using (var command = new MySqlCommand(topTermsQuery.ToString(), connection, transaction))
+                            {
+                                command.Parameters.AddRange(parameters.ToArray());
+                                command.ExecuteNonQuery();
+                            }
+                        }
+
+                        // Bulk Insert TpConnections
+                        if (record.Tp_connections != null)
+                        {
+                            var tpConnectionsQuery = new StringBuilder("INSERT INTO tpconnections (Id, OpenAlexRecordId, SerialNo, Url, Weight, Topic) VALUES ");
+
+                            var parameters = new List<MySqlParameter>();
+                            int paramIndex = 0;
+
+                            foreach (var connectionItem in record.Tp_connections)
+                            {
+                                var tpConnections = ParseTpConnections(connectionItem, record.Id);
+
+                                if (tpConnections != null)
+                                {
+                                    foreach (var tp in tpConnections)
+                                    {
+                                        tpConnectionsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @SerialNo{paramIndex}, @Url{paramIndex}, @Weight{paramIndex}, @Topic{paramIndex}),");
+
+                                        parameters.Add(new MySqlParameter($"@Id{paramIndex}", tp.Id));
+                                        parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
+                                        parameters.Add(new MySqlParameter($"@SerialNo{paramIndex}", tp.SerialNo));
+                                        parameters.Add(new MySqlParameter($"@Url{paramIndex}", tp.Url));
+                                        parameters.Add(new MySqlParameter($"@Weight{paramIndex}", tp.Weight));
+                                        parameters.Add(new MySqlParameter($"@Topic{paramIndex}", tp.Topic));
+
+                                        paramIndex++;
+                                    }
+                                }
+                            }
+
+                            // Remove trailing comma and execute
+                            tpConnectionsQuery.Length--;
+                            tpConnectionsQuery.Append(";");
+
+                            using (var command = new MySqlCommand(tpConnectionsQuery.ToString(), connection, transaction))
+                            {
+                                command.Parameters.AddRange(parameters.ToArray());
                                 command.ExecuteNonQuery();
                             }
                         }
                     }
+
+                    // Commit the transaction after processing all records
+                    transaction.Commit();
                 }
-               
+                catch (Exception ex)
+                {
+                    // Rollback in case of error
+                    transaction.Rollback();
+                    throw;
+                }
             }
         }
+
     }
+
     public static List<TpConnection> ParseTpConnections(string rawData, Guid openAlexRecordId)
     {
         var result = new List<TpConnection>();
