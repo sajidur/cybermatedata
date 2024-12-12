@@ -187,6 +187,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -216,12 +217,10 @@ public class OpenAlexRecord
     public string? OpenAlex_id { get; set; }
     public string? Name { get; set; }
     public int? total_no_publications { get; set; }
-    public int? no_publications_first_author { get; set; }
     public string? orcid { get; set; }
-    public List<string>? publications_list { get; set; }
-    public List<double>? vec { get; set; }
-    public List<TopTerms>? top_terms { get; set; }
-    public List<TpConnection>? Tp_connections { get; set; }
+    public int? no_publications_first_author { get; set; }
+    public string? publications_list { get; set; }
+    public string? vec { get; set; }
 }
 
 public class TpConnection
@@ -331,127 +330,294 @@ public class Program
 
         return records;
     }
-
     public static void InsertDataIntoMySql(List<ViewOpenAlexRecordFromCSV> records, string connectionString)
     {
-        using (var connection = new MySqlConnection(connectionString))
+        const int BatchSize = 1000; // Process larger batches for efficiency
+
+        using var connection = new MySqlConnection(connectionString);
+        connection.Open();
+
+        int recordCount = 0;
+
+        foreach (var batch in records.Chunk(BatchSize))
         {
-            connection.Open();
-
-            using (var transaction = connection.BeginTransaction())
+            using var transaction = connection.BeginTransaction();
+            try
             {
-                try
+                // Combine all operations into one batch
+                var openAlexBatchQuery = new StringBuilder();
+                var topTermsBatchQuery = new StringBuilder();
+                var tpConnectionsBatchQuery = new StringBuilder();
+
+                foreach (var record in batch)
                 {
-                    foreach (var record in records)
-                    {
-                        // Insert into OpenAlexRecord
-                        var openAlexQuery = @"
-                    INSERT INTO openalexrecords 
-                    (Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid, publications_list, vec) 
-                    VALUES (@Id, @Unnamed_0, @OpenAlex_id, @Name, @TotalPublications, @FirstAuthorPublications, @Orcid, @PublicationsList, @Vec);";
-
-                        using (var command = new MySqlCommand(openAlexQuery, connection, transaction))
-                        {
-                            command.Parameters.AddWithValue("@Id", record.Id);
-                            command.Parameters.AddWithValue("@Unnamed_0", record.Unnamed_0);
-                            command.Parameters.AddWithValue("@OpenAlex_id", record.OpenAlex_id);
-                            command.Parameters.AddWithValue("@Name", record.Name);
-                            command.Parameters.AddWithValue("@TotalPublications", record.total_no_publications);
-                            command.Parameters.AddWithValue("@FirstAuthorPublications", record.no_publications_first_author);
-                            command.Parameters.AddWithValue("@Orcid", record.orcid);
-                            command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list ?? new List<string>()));
-                            command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec ?? new List<double>()));
-
-                            command.ExecuteNonQuery();
-                        }
-
-                        // Bulk Insert TopTerms
-                        if (record.top_terms != null)
-                        {
-                            var topTerms = ParseTopTerms(record.top_terms, record.Id);
-                            var topTermsQuery = new StringBuilder("INSERT INTO topterms (Id, OpenAlexRecordId, `Key`, Weight) VALUES ");
-
-                            var parameters = new List<MySqlParameter>();
-                            int paramIndex = 0;
-
-                            foreach (var term in topTerms)
-                            {
-                                topTermsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @Key{paramIndex}, @Weight{paramIndex}),");
-
-                                parameters.Add(new MySqlParameter($"@Id{paramIndex}", term.Id));
-                                parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
-                                parameters.Add(new MySqlParameter($"@Key{paramIndex}", term.Key));
-                                parameters.Add(new MySqlParameter($"@Weight{paramIndex}", term.Weight));
-
-                                paramIndex++;
-                            }
-
-                            // Remove trailing comma and execute
-                            topTermsQuery.Length--;
-                            topTermsQuery.Append(";");
-
-                            using (var command = new MySqlCommand(topTermsQuery.ToString(), connection, transaction))
-                            {
-                                command.Parameters.AddRange(parameters.ToArray());
-                                command.ExecuteNonQuery();
-                            }
-                        }
-
-                        // Bulk Insert TpConnections
-                        if (record.Tp_connections != null)
-                        {
-                            var tpConnectionsQuery = new StringBuilder("INSERT INTO tpconnections (Id, OpenAlexRecordId, SerialNo, Url, Weight, Topic) VALUES ");
-
-                            var parameters = new List<MySqlParameter>();
-                            int paramIndex = 0;
-
-                            foreach (var connectionItem in record.Tp_connections)
-                            {
-                                var tpConnections = ParseTpConnections(connectionItem, record.Id);
-
-                                if (tpConnections != null)
-                                {
-                                    foreach (var tp in tpConnections)
-                                    {
-                                        tpConnectionsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @SerialNo{paramIndex}, @Url{paramIndex}, @Weight{paramIndex}, @Topic{paramIndex}),");
-
-                                        parameters.Add(new MySqlParameter($"@Id{paramIndex}", tp.Id));
-                                        parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
-                                        parameters.Add(new MySqlParameter($"@SerialNo{paramIndex}", tp.SerialNo));
-                                        parameters.Add(new MySqlParameter($"@Url{paramIndex}", tp.Url));
-                                        parameters.Add(new MySqlParameter($"@Weight{paramIndex}", tp.Weight));
-                                        parameters.Add(new MySqlParameter($"@Topic{paramIndex}", tp.Topic));
-
-                                        paramIndex++;
-                                    }
-                                }
-                            }
-
-                            // Remove trailing comma and execute
-                            tpConnectionsQuery.Length--;
-                            tpConnectionsQuery.Append(";");
-
-                            using (var command = new MySqlCommand(tpConnectionsQuery.ToString(), connection, transaction))
-                            {
-                                command.Parameters.AddRange(parameters.ToArray());
-                                command.ExecuteNonQuery();
-                            }
-                        }
-                    }
-
-                    // Commit the transaction after processing all records
-                    transaction.Commit();
+                    AppendOpenAlexRecord(openAlexBatchQuery, record);
+                    AppendTopTerms(topTermsBatchQuery, record);
+                    AppendTpConnections(tpConnectionsBatchQuery, record);
                 }
-                catch (Exception ex)
+
+                ExecuteBatchQuery(connection, transaction, openAlexBatchQuery.ToString());
+                ExecuteBatchQuery(connection, transaction, topTermsBatchQuery.ToString());
+                ExecuteBatchQuery(connection, transaction, tpConnectionsBatchQuery.ToString());
+
+                transaction.Commit();
+                recordCount += batch.Count();
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                Console.WriteLine($"Batch failed: {ex.Message}");
+                throw;
+            }
+
+            Console.WriteLine($"Processed {recordCount} records successfully.");
+        }
+    }
+
+    private static void AppendOpenAlexRecord(StringBuilder queryBuilder, ViewOpenAlexRecordFromCSV record)
+    {
+        if (queryBuilder.Length == 0)
+        {
+            queryBuilder.Append("INSERT INTO openalexrecords (Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid, publications_list, vec) VALUES ");
+        }
+        queryBuilder.AppendFormat("('{0}', '{1}', '{2}', '{3}', {4}, {5}, '{6}', '{7}', '{8}'),",
+            record.Id,
+            record.Unnamed_0,
+            record.OpenAlex_id,
+            record.Name.Replace("'", "''"),
+            record.total_no_publications,
+            record.no_publications_first_author,
+            record.orcid,
+            string.Join(",", record.publications_list ?? new List<string>()).Replace("'", "''"),
+            string.Join(",", record.vec ?? new List<double>()));
+    }
+
+    private static void AppendTopTerms(StringBuilder queryBuilder, ViewOpenAlexRecordFromCSV record)
+    {
+        if (record.top_terms == null || !record.top_terms.Any()) return;
+
+        if (queryBuilder.Length == 0)
+        {
+            queryBuilder.Append("INSERT INTO topterms (Id, OpenAlexRecordId, `Key`, Weight) VALUES ");
+        }
+
+        var topTerms = ParseTopTerms(record.top_terms, record.Id);
+        foreach (var term in topTerms)
+        {
+            queryBuilder.AppendFormat("('{0}', '{1}', '{2}', {3}),",
+                term.Id,
+                record.Id,
+                term.Key.Replace("'", "''"),
+                term.Weight);
+        }
+    }
+
+    private static void AppendTpConnections(StringBuilder queryBuilder, ViewOpenAlexRecordFromCSV record)
+    {
+        if (record.Tp_connections == null || !record.Tp_connections.Any()) return;
+
+        if (queryBuilder.Length == 0)
+        {
+            queryBuilder.Append("INSERT INTO tpconnections (Id, OpenAlexRecordId, SerialNo, Url, Weight, Topic) VALUES ");
+        }
+
+        foreach (var connectionEntry in record.Tp_connections)
+        {
+            var tpConnections = ParseTpConnections(connectionEntry, record.Id);
+            if (tpConnections != null)
+            {
+                foreach (var tp in tpConnections)
                 {
-                    // Rollback in case of error
-                    transaction.Rollback();
-                    throw;
+                    queryBuilder.AppendFormat("('{0}', '{1}', {2}, '{3}', {4}, '{5}'),",
+                        tp.Id,
+                        record.Id,
+                        tp.SerialNo,
+                        tp.Url.Replace("'", "''"),
+                        tp.Weight,
+                        tp.Topic.Replace("'", "''"));
                 }
             }
         }
-
     }
+
+    private static void ExecuteBatchQuery(MySqlConnection connection, MySqlTransaction transaction, string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+
+        query = query.TrimEnd(',') + ";"; // Remove trailing comma and add a semicolon
+
+        using var command = new MySqlCommand(query, connection, transaction);
+        command.CommandTimeout = 120; // Increased timeout for large batches
+        command.ExecuteNonQuery();
+    }
+
+    //public static void InsertDataIntoMySql(List<ViewOpenAlexRecordFromCSV> records, string connectionString)
+    //{
+    //    using (var connection = new MySqlConnection(connectionString))
+    //    {
+    //        connection.Open();
+
+    //        using (var transaction = connection.BeginTransaction())
+    //        {
+    //            try
+    //            {
+    //                foreach (var record in records)
+    //                {
+    //                    // Insert into OpenAlexRecord
+    //                    var openAlexQuery = @"
+    //                INSERT INTO openalexrecords 
+    //                (Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid, publications_list, vec) 
+    //                VALUES (@Id, @Unnamed_0, @OpenAlex_id, @Name, @TotalPublications, @FirstAuthorPublications, @Orcid, @PublicationsList, @Vec);";
+
+    //                    using (var command = new MySqlCommand(openAlexQuery, connection, transaction))
+    //                    {
+    //                        command.Parameters.AddWithValue("@Id", record.Id);
+    //                        command.Parameters.AddWithValue("@Unnamed_0", record.Unnamed_0);
+    //                        command.Parameters.AddWithValue("@OpenAlex_id", record.OpenAlex_id);
+    //                        command.Parameters.AddWithValue("@Name", record.Name);
+    //                        command.Parameters.AddWithValue("@TotalPublications", record.total_no_publications);
+    //                        command.Parameters.AddWithValue("@FirstAuthorPublications", record.no_publications_first_author);
+    //                        command.Parameters.AddWithValue("@Orcid", record.orcid);
+    //                        command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list ?? new List<string>()));
+    //                        command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec ?? new List<double>()));
+
+    //                        command.ExecuteNonQuery();
+    //                    }
+
+    //                    // Bulk Insert TopTerms
+    //                    if (record.top_terms != null)
+    //                    {
+    //                        var topTerms = ParseTopTerms(record.top_terms, record.Id);
+    //                        var topTermsQuery = new StringBuilder("INSERT INTO topterms (Id, OpenAlexRecordId, `Key`, Weight) VALUES ");
+
+    //                        var parameters = new List<MySqlParameter>();
+    //                        int paramIndex = 0;
+
+    //                        foreach (var term in topTerms)
+    //                        {
+    //                            topTermsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @Key{paramIndex}, @Weight{paramIndex}),");
+
+    //                            parameters.Add(new MySqlParameter($"@Id{paramIndex}", term.Id));
+    //                            parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
+    //                            parameters.Add(new MySqlParameter($"@Key{paramIndex}", term.Key));
+    //                            parameters.Add(new MySqlParameter($"@Weight{paramIndex}", term.Weight));
+
+    //                            paramIndex++;
+    //                        }
+
+    //                        // Remove trailing comma and execute
+    //                        topTermsQuery.Length--;
+    //                        topTermsQuery.Append(";");
+
+    //                        using (var command = new MySqlCommand(topTermsQuery.ToString(), connection, transaction))
+    //                        {
+    //                            command.Parameters.AddRange(parameters.ToArray());
+    //                            command.ExecuteNonQuery();
+    //                        }
+    //                    }
+
+    //                    // Bulk Insert TpConnections
+    //                    if (record.Tp_connections != null)
+    //                    {
+    //                        var tpConnectionsQuery = new StringBuilder("INSERT INTO tpconnections (Id, OpenAlexRecordId, SerialNo, Url, Weight, Topic) VALUES ");
+
+    //                        var parameters = new List<MySqlParameter>();
+    //                        int paramIndex = 0;
+
+    //                        foreach (var connectionItem in record.Tp_connections)
+    //                        {
+    //                            var tpConnections = ParseTpConnections(connectionItem, record.Id);
+
+    //                            if (tpConnections != null)
+    //                            {
+    //                                foreach (var tp in tpConnections)
+    //                                {
+    //                                    tpConnectionsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @SerialNo{paramIndex}, @Url{paramIndex}, @Weight{paramIndex}, @Topic{paramIndex}),");
+
+    //                                    parameters.Add(new MySqlParameter($"@Id{paramIndex}", tp.Id));
+    //                                    parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
+    //                                    parameters.Add(new MySqlParameter($"@SerialNo{paramIndex}", tp.SerialNo));
+    //                                    parameters.Add(new MySqlParameter($"@Url{paramIndex}", tp.Url));
+    //                                    parameters.Add(new MySqlParameter($"@Weight{paramIndex}", tp.Weight));
+    //                                    parameters.Add(new MySqlParameter($"@Topic{paramIndex}", tp.Topic));
+
+    //                                    paramIndex++;
+    //                                }
+    //                            }
+    //                        }
+
+    //                        // Remove trailing comma and execute
+    //                        tpConnectionsQuery.Length--;
+    //                        tpConnectionsQuery.Append(";");
+
+    //                        using (var command = new MySqlCommand(tpConnectionsQuery.ToString(), connection, transaction))
+    //                        {
+    //                            command.Parameters.AddRange(parameters.ToArray());
+    //                            command.ExecuteNonQuery();
+    //                        }
+    //                    }
+    //                }
+
+    //                // Commit the transaction after processing all records
+    //                transaction.Commit();
+    //            }
+    //            catch (Exception ex)
+    //            {
+    //                // Rollback in case of error
+    //                transaction.Rollback();
+    //                throw;
+    //            }
+    //        }
+    //    }
+
+    //}
+
+    //public static List<TpConnection> ParseTpConnections(string rawData, Guid openAlexRecordId)
+    //{
+    //    var result = new List<TpConnection>();
+
+    //    if (string.IsNullOrWhiteSpace(rawData))
+    //        return result;
+
+    //    // Split by comma-separated entries
+    //    var entries = rawData.Split(new[] { "], " }, StringSplitOptions.RemoveEmptyEntries);
+
+    //    foreach (var entry in entries)
+    //    {
+    //        // Extract the serial number and the rest of the data
+    //        var parts = entry.Split(new[] { ": [" }, StringSplitOptions.RemoveEmptyEntries);
+    //        if (parts.Length == 2)
+    //        {
+    //            if (int.TryParse(parts[0].Trim(), out var serialNo))
+    //            {
+    //                // Further split the remaining data into URL, weight, and topic
+    //                var data = parts[1].Trim('[', ']', ' ').Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
+
+    //                if (data.Length == 3)
+    //                {
+    //                    var url = data[0].Trim('\'', '\"');
+    //                    var weightStr = data[1];
+    //                    var topic = data[2].Trim('\'', '\"');
+
+    //                    if (double.TryParse(weightStr, out var weight))
+    //                    {
+    //                        result.Add(new TpConnection
+    //                        {
+    //                            Id = Guid.NewGuid(), // Assign a unique identifier
+    //                            OpenAlexRecordId = openAlexRecordId, // Link to the parent record
+    //                            SerialNo = serialNo, // Assign the serial number
+    //                            Url = url, // Assign the URL
+    //                            Weight = weight, // Assign the weight
+    //                            Topic = topic // Assign the topic
+    //                        });
+    //                    }
+    //                }
+    //            }
+    //        }
+    //    }
+
+    //    return result;
+    //}
 
     public static List<TpConnection> ParseTpConnections(string rawData, Guid openAlexRecordId)
     {
@@ -460,7 +626,7 @@ public class Program
         if (string.IsNullOrWhiteSpace(rawData))
             return result;
 
-        // Split by comma-separated entries
+        // Split by comma-separated entries (each connection block is delimited by "], ")
         var entries = rawData.Split(new[] { "], " }, StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var entry in entries)
@@ -477,19 +643,19 @@ public class Program
                     if (data.Length == 3)
                     {
                         var url = data[0].Trim('\'', '\"');
-                        var weightStr = data[1];
+                        var weightStr = data[1].Trim();
                         var topic = data[2].Trim('\'', '\"');
 
-                        if (double.TryParse(weightStr, out var weight))
+                        if (double.TryParse(weightStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
                         {
                             result.Add(new TpConnection
                             {
-                                Id = Guid.NewGuid(), // Assign a unique identifier
-                                OpenAlexRecordId = openAlexRecordId, // Link to the parent record
-                                SerialNo = serialNo, // Assign the serial number
-                                Url = url, // Assign the URL
-                                Weight = weight, // Assign the weight
-                                Topic = topic // Assign the topic
+                                Id = Guid.NewGuid(),
+                                OpenAlexRecordId = openAlexRecordId,
+                                SerialNo = serialNo,
+                                Url = url,
+                                Weight = weight,
+                                Topic = topic
                             });
                         }
                     }
