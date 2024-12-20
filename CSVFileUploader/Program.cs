@@ -1,201 +1,20 @@
-﻿//using System;
-//using System.Collections.Generic;
-//using System.Globalization;
-//using System.IO;
-//using System.Linq;
-//using CsvHelper;
-//using CsvHelper.Configuration;
-//using Microsoft.Extensions.Configuration;
-//using MySql.Data.MySqlClient;
-
-
-//    public class OpenAlexRecord
-//    {
-//        public Guid Id { get; set; }
-//        public int? Unnamed_0 { get; set; }
-//        public string? OpenAlex_id { get; set; }
-//        public string? Name { get; set; }
-//        public int? total_no_publications { get; set; }
-//        public int? no_publications_first_author { get; set; }
-//        public string? orcid { get; set; }
-//        public List<string>? publications_list { get; set; }
-//        public List<double>? vec { get; set; }
-
-//        public List<TopTerms>? top_terms { get; set; }
-
-//        public List<TpConnection>? Tp_connections { get; set; }
-
-//    }
-//    // Define a model for TpConnection
-//    public class TpConnection
-//    {
-//        public Guid OpenAlexRecordId { get; set; }
-//        public int SerialNo { get; set; }
-//        public string? Url { get; set; } // Represents the URL
-//        public double? Weight { get; set; } // Represents the second value
-//        public string? Topic { get; set; } // Represents the third value
-//    }
-//    public class TopTerms
-//    {
-//        public Guid OpenAlexRecordId { get; set; }
-//        public string? key { get; set; }
-//        public double? Weight { get; set; }
-//    }
-
-//public class Program
-//{
-//    public static IConfiguration Configuration { get; private set; }
-
-//    public static void Main(string[] args)
-//    {
-//        try
-//        {
-//            // Load configuration
-//            // Load configuration
-//            var builder = new ConfigurationBuilder()
-//                .SetBasePath(Directory.GetCurrentDirectory())
-//                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true); // Ensure optional is false to enforce loading
-//            Configuration = builder.Build();
-
-//            // Retrieve connection string
-//            var connectionString = Configuration.GetConnectionString("DefaultConnection"); if (string.IsNullOrEmpty(connectionString))
-//            {
-//                Console.WriteLine("Recorrect connection string again please");
-//            }
-//                // Input CSV path
-//           var inputCsvPath = "complete_data.csv";
-
-//            // Step 1: Read CSV data into a list of records
-//            var records = ReadCsv(inputCsvPath);
-//            Console.WriteLine("show capacity "+records.Capacity);
-//            // Step 2: Insert data into MySQL
-//            InsertDataIntoMySql(records, connectionString);
-
-//            Console.WriteLine("Data inserted into MySQL successfully!");
-//        }
-//        catch (Exception ex)
-//        {
-//            Console.WriteLine($"An error occurred: {ex.Message}");
-//        }
-//    }
-
-//    /// <summary>
-//    /// Reads CSV file and maps it to a list of OpenAlexRecord objects.
-//    /// </summary>
-//    public static List<OpenAlexRecord> ReadCsv(string inputCsvPath)
-//    {
-//        var records = new List<OpenAlexRecord>();
-
-//        using (var reader = new StreamReader(inputCsvPath))
-//        using (var csv = new CsvReader(reader, new CsvConfiguration(CultureInfo.InvariantCulture)))
-//        {
-//            csv.Read();
-//            csv.ReadHeader(); // Skip the header row
-
-//            while (csv.Read())
-//            {
-//                var record = new OpenAlexRecord
-//                {
-//                    Id = Guid.NewGuid(), // Generate a unique ID for each record
-//                    Unnamed_0 = csv.GetField<int>("Unnamed: 0"),
-//                    OpenAlex_id = csv.GetField<string>("OpenAlex_id"),
-//                    Name = csv.GetField<string>("Name"),
-//                    total_no_publications = csv.GetField<int>("total_no_publications"),
-//                    no_publications_first_author = csv.GetField<int>("no_publications_first_author"),
-//                    orcid = csv.GetField<string>("orcid"),
-//                    publications_list = ParseList(csv.GetField<string>("publications_list")),
-//                    vec = ParseVec(csv.GetField<string>("vec")),
-//                    top_terms = ParseList(csv.GetField<string>("top_terms")),
-//                    Tp_connections = ParseList(csv.GetField<string>("Tp_connections"))
-//                };
-//                records.Add(record);
-//            }
-//        }
-
-//        return records;
-//    }
-
-//    /// <summary>
-//    /// Inserts a list of OpenAlexRecord objects into a MySQL database.
-//    /// </summary>
-//    public static void InsertDataIntoMySql(List<OpenAlexRecord> records, string connectionString)
-//    {
-//        using (var connection = new MySqlConnection(connectionString))
-//        {
-//            connection.Open();
-
-//            foreach (var record in records)
-//            {
-//                var query = @"
-//                    INSERT INTO openalexrecords 
-//                    (Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid, 
-//                     publications_list, vec, top_terms, Tp_connections)
-//                    VALUES 
-//                    (@Id, @Unnamed_0, @OpenAlex_id, @Name, @total_no_publications, @no_publications_first_author, @orcid, 
-//                     @PublicationsList, @Vec, @TopTerms, @TpConnections)";
-
-//                using (var command = new MySqlCommand(query, connection))
-//                {
-//                    command.Parameters.AddWithValue("@Id", record.Id);
-//                    command.Parameters.AddWithValue("@Unnamed_0", record.Unnamed_0);
-//                    command.Parameters.AddWithValue("@OpenAlex_id", record.OpenAlex_id);
-//                    command.Parameters.AddWithValue("@Name", record.Name);
-//                    command.Parameters.AddWithValue("@total_no_publications", record.total_no_publications);
-//                    command.Parameters.AddWithValue("@no_publications_first_author", record.no_publications_first_author);
-//                    command.Parameters.AddWithValue("@orcid", record.orcid);
-//                    command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list));
-//                    command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec));
-//                    command.Parameters.AddWithValue("@TopTerms", string.Join(",", record.top_terms));
-//                    command.Parameters.AddWithValue("@TpConnections", string.Join(",", record.Tp_connections));
-
-//                    command.ExecuteNonQuery();
-//                }
-//            }
-//        }
-//    }
-
-//    /// <summary>
-//    /// Parses a comma-separated string into a list of strings.
-//    /// </summary>
-//    public static List<string> ParseList(string input)
-//    {
-//        if (string.IsNullOrEmpty(input))
-//            return new List<string>();
-
-//        return input
-//            .Trim('[', ']')
-//            .Split(',')
-//            .Select(x => x.Trim().Trim('\'')) // Remove surrounding spaces and quotes
-//            .ToList();
-//    }
-
-//    /// <summary>
-//    /// Parses a comma-separated string into a list of doubles.
-//    /// </summary>
-//    public static List<double> ParseVec(string input)
-//    {
-//        if (string.IsNullOrEmpty(input))
-//            return new List<double>();
-
-//        return input
-//            .Trim('[', ']')
-//            .Split(',')
-//            .Select(x => double.TryParse(x.Trim(), out var num) ? num : 0)
-//            .ToList();
-//    }
-//}
-
+﻿
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime;
+using System.Security.Policy;
 using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using CsvHelper;
 using CsvHelper.Configuration;
 using Microsoft.Extensions.Configuration;
 using MySql.Data.MySqlClient;
+using Org.BouncyCastle.Bcpg.OpenPgp;
 public class ViewOpenAlexRecordFromCSV
 {
     public Guid Id { get; set; }
@@ -216,31 +35,17 @@ public class OpenAlexRecord
     public int? Unnamed_0 { get; set; }
     public string? OpenAlex_id { get; set; }
     public string? Name { get; set; }
+    public string? Profile { get; set; }
+    public string? University { get; set; }
     public int? total_no_publications { get; set; }
     public string? orcid { get; set; }
     public int? no_publications_first_author { get; set; }
     public string? publications_list { get; set; }
     public string? vec { get; set; }
+    public string? top_terms { get; set; }
+    public string? keyterms { get; set; }   
+    public string? Tp_connections { get; set; }
 }
-
-public class TpConnection
-{
-    public Guid Id { get; set; }    
-    public Guid OpenAlexRecordId { get; set; }
-    public int SerialNo { get; set; }
-    public string? Url { get; set; }
-    public double? Weight { get; set; }
-    public string? Topic { get; set; }
-}
-
-public class TopTerms
-{
-    public Guid Id { get; set; }    
-    public Guid OpenAlexRecordId { get; set; }
-    public string? Key { get; set; }
-    public double? Weight { get; set; }
-}
-
 public class Program
 {
     public static IConfiguration Configuration { get; private set; }
@@ -249,39 +54,20 @@ public class Program
     {
         try
         {
-            // Load configuration
-            //var builder = new ConfigurationBuilder()
-            //    .SetBasePath(Directory.GetCurrentDirectory())
-            //    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-            //Configuration = builder.Build();
-
-            //var connectionString = Configuration.GetConnectionString("DefaultConnection");
-            //if (string.IsNullOrEmpty(connectionString))
-            //{
-            //    throw new Exception("Connection string is missing or invalid.");
-            //}
+         
 
             var inputCsvPath = "complete_data.csv";
 
             var records = ReadCsv(inputCsvPath);
 
-            //foreach (var record in records) {
-
-
-            //foreach (var row in record.Tp_connections) {
-            //    var tpconnections = new List<TpConnection>();
-            //    tpconnections= ParseTpConnections(row,record.Id);
-            //    foreach (var connection in tpconnections) { 
-            //    Console.WriteLine(connection.SerialNo);
-            //    }
-
-
-            //}
-
-            //var top_terms = ParseTopTerms(record.top_terms, record.Id);
-            //Console.WriteLine(top_terms.Count);
-
-
+            //foreach (var record in records)
+            //{
+            //    Console.WriteLine(record.top_terms.Count);
+            //    foreach(var row in record.top_terms) { Console.WriteLine(row); }    
+            //    string x= ConvertToJsonString(record.top_terms);    
+            //    Console.WriteLine(x);
+            //    string k = ExtractTermsFromList(record.top_terms);
+            //    Console.WriteLine(k);   
             //    break;
             //}
             string connectionString = "Server=MYSQL5050.site4now.net;Database=db_a66689_cyberma;Uid=a66689_cyberma;Pwd=Root@pass1;";
@@ -321,8 +107,6 @@ public class Program
                     vec = ParseVec(csv.GetField<string>("vec")),
                     top_terms = ParseTopTerms(csv.GetField<string>("top_terms")),
                     Tp_connections = ParseTpConnections(csv.GetField<string>("Tp_connections"))
-                    //top_terms = ParseList(csv.GetField<string>("top_terms")),
-                    //Tp_connections = ParseList(csv.GetField<string>("Tp_connections"))
                 };
                 records.Add(record);
             }
@@ -332,7 +116,7 @@ public class Program
     }
     public static void InsertDataIntoMySql(List<ViewOpenAlexRecordFromCSV> records, string connectionString)
     {
-        const int BatchSize = 1000; // Process larger batches for efficiency
+        const int BatchSize = 500; // Adjust based on requirements
 
         using var connection = new MySqlConnection(connectionString);
         connection.Open();
@@ -342,26 +126,18 @@ public class Program
         foreach (var batch in records.Chunk(BatchSize))
         {
             using var transaction = connection.BeginTransaction();
+
             try
             {
-                // Combine all operations into one batch
-                var openAlexBatchQuery = new StringBuilder();
-                var topTermsBatchQuery = new StringBuilder();
-                var tpConnectionsBatchQuery = new StringBuilder();
-
                 foreach (var record in batch)
                 {
-                    AppendOpenAlexRecord(openAlexBatchQuery, record);
-                    AppendTopTerms(topTermsBatchQuery, record);
-                    AppendTpConnections(tpConnectionsBatchQuery, record);
+                    InsertRecord(connection, transaction, record);
                 }
-
-                ExecuteBatchQuery(connection, transaction, openAlexBatchQuery.ToString());
-                ExecuteBatchQuery(connection, transaction, topTermsBatchQuery.ToString());
-                ExecuteBatchQuery(connection, transaction, tpConnectionsBatchQuery.ToString());
 
                 transaction.Commit();
                 recordCount += batch.Count();
+
+                Console.WriteLine($"Processed {recordCount} records successfully.");
             }
             catch (Exception ex)
             {
@@ -369,336 +145,191 @@ public class Program
                 Console.WriteLine($"Batch failed: {ex.Message}");
                 throw;
             }
-
-            Console.WriteLine($"Processed {recordCount} records successfully.");
         }
     }
-
-    private static void AppendOpenAlexRecord(StringBuilder queryBuilder, ViewOpenAlexRecordFromCSV record)
+    private static void InsertRecord(MySqlConnection connection, MySqlTransaction transaction, ViewOpenAlexRecordFromCSV  record)
     {
-        if (queryBuilder.Length == 0)
+        const string query = @"
+            INSERT INTO openalexrecords 
+            (Id, Unnamed_0, OpenAlex_id, Name, Profile, University, total_no_publications, orcid, no_publications_first_author, 
+             publications_list, vec, top_terms, keyterms, Tp_connections)
+            VALUES
+            (@Id, @Unnamed_0, @OpenAlex_id, @Name, @Profile, @University, @TotalNoPublications, @Orcid, 
+             @NoPublicationsFirstAuthor, @PublicationsList, @Vec, @TopTerms, @Keyterms, @TpConnections)";
+
+        using var command = new MySqlCommand(query, connection, transaction)
         {
-            queryBuilder.Append("INSERT INTO openalexrecords (Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid, publications_list, vec) VALUES ");
-        }
-        queryBuilder.AppendFormat("('{0}', '{1}', '{2}', '{3}', {4}, {5}, '{6}', '{7}', '{8}'),",
-            record.Id,
-            record.Unnamed_0,
-            record.OpenAlex_id,
-            record.Name.Replace("'", "''"),
-            record.total_no_publications,
-            record.no_publications_first_author,
-            record.orcid,
-            string.Join(",", record.publications_list ?? new List<string>()).Replace("'", "''"),
-            string.Join(",", record.vec ?? new List<double>()));
-    }
+            CommandTimeout = 300 // Adjust timeout as necessary
+        };
 
-    private static void AppendTopTerms(StringBuilder queryBuilder, ViewOpenAlexRecordFromCSV record)
-    {
-        if (record.top_terms == null || !record.top_terms.Any()) return;
+        command.Parameters.AddWithValue("@Id", record.Id);
+        command.Parameters.AddWithValue("@Unnamed_0", record.Unnamed_0 ?? 0);
+        command.Parameters.AddWithValue("@OpenAlex_id", record.OpenAlex_id ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@Name", record.Name ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@Profile", "");
+        command.Parameters.AddWithValue("@University", "");
+        command.Parameters.AddWithValue("@TotalNoPublications", record.total_no_publications ??0);
+        command.Parameters.AddWithValue("@Orcid", record.orcid ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@NoPublicationsFirstAuthor", record.no_publications_first_author ??0);
+        command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list ?? new List<string>()));
+        command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec ?? new List<double>()));
+        command.Parameters.AddWithValue("@TopTerms", ConvertToJsonString(record.top_terms) ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@Keyterms", ExtractTermsFromList(record.top_terms) ?? (object)DBNull.Value);
+        command.Parameters.AddWithValue("@TpConnections", ParseTpConnectionsForQuery(record.Tp_connections, record.OpenAlex_id) ?? (object)DBNull.Value);
 
-        if (queryBuilder.Length == 0)
-        {
-            queryBuilder.Append("INSERT INTO topterms (Id, OpenAlexRecordId, `Key`, Weight) VALUES ");
-        }
-
-        var topTerms = ParseTopTerms(record.top_terms, record.Id);
-        foreach (var term in topTerms)
-        {
-            queryBuilder.AppendFormat("('{0}', '{1}', '{2}', {3}),",
-                term.Id,
-                record.Id,
-                term.Key.Replace("'", "''"),
-                term.Weight);
-        }
-    }
-
-    private static void AppendTpConnections(StringBuilder queryBuilder, ViewOpenAlexRecordFromCSV record)
-    {
-        if (record.Tp_connections == null || !record.Tp_connections.Any()) return;
-
-        if (queryBuilder.Length == 0)
-        {
-            queryBuilder.Append("INSERT INTO tpconnections (Id, OpenAlexRecordId, SerialNo, Url, Weight, Topic) VALUES ");
-        }
-
-        foreach (var connectionEntry in record.Tp_connections)
-        {
-            var tpConnections = ParseTpConnections(connectionEntry, record.Id);
-            if (tpConnections != null)
-            {
-                foreach (var tp in tpConnections)
-                {
-                    queryBuilder.AppendFormat("('{0}', '{1}', {2}, '{3}', {4}, '{5}'),",
-                        tp.Id,
-                        record.Id,
-                        tp.SerialNo,
-                        tp.Url.Replace("'", "''"),
-                        tp.Weight,
-                        tp.Topic.Replace("'", "''"));
-                }
-            }
-        }
-    }
-
-    private static void ExecuteBatchQuery(MySqlConnection connection, MySqlTransaction transaction, string query)
-    {
-        if (string.IsNullOrWhiteSpace(query)) return;
-
-        query = query.TrimEnd(',') + ";"; // Remove trailing comma and add a semicolon
-
-        using var command = new MySqlCommand(query, connection, transaction);
-        command.CommandTimeout = 120; // Increased timeout for large batches
         command.ExecuteNonQuery();
     }
 
     //public static void InsertDataIntoMySql(List<ViewOpenAlexRecordFromCSV> records, string connectionString)
     //{
-    //    using (var connection = new MySqlConnection(connectionString))
+    //    const int BatchSize = 1; // Adjust for efficiency
+    //    using var connection = new MySqlConnection(connectionString);
+    //    connection.Open();
+
+    //    int recordCount = 0;
+    //    foreach (var batch in records.Chunk(BatchSize))
     //    {
-    //        connection.Open();
-
-    //        using (var transaction = connection.BeginTransaction())
+    //        using var transaction = connection.BeginTransaction();
+    //        try
     //        {
-    //            try
+    //            var openAlexBatchQuery = new StringBuilder();
+    //            foreach (var record in batch)
     //            {
-    //                foreach (var record in records)
-    //                {
-    //                    // Insert into OpenAlexRecord
-    //                    var openAlexQuery = @"
-    //                INSERT INTO openalexrecords 
-    //                (Id, Unnamed_0, OpenAlex_id, Name, total_no_publications, no_publications_first_author, orcid, publications_list, vec) 
-    //                VALUES (@Id, @Unnamed_0, @OpenAlex_id, @Name, @TotalPublications, @FirstAuthorPublications, @Orcid, @PublicationsList, @Vec);";
-
-    //                    using (var command = new MySqlCommand(openAlexQuery, connection, transaction))
-    //                    {
-    //                        command.Parameters.AddWithValue("@Id", record.Id);
-    //                        command.Parameters.AddWithValue("@Unnamed_0", record.Unnamed_0);
-    //                        command.Parameters.AddWithValue("@OpenAlex_id", record.OpenAlex_id);
-    //                        command.Parameters.AddWithValue("@Name", record.Name);
-    //                        command.Parameters.AddWithValue("@TotalPublications", record.total_no_publications);
-    //                        command.Parameters.AddWithValue("@FirstAuthorPublications", record.no_publications_first_author);
-    //                        command.Parameters.AddWithValue("@Orcid", record.orcid);
-    //                        command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list ?? new List<string>()));
-    //                        command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec ?? new List<double>()));
-
-    //                        command.ExecuteNonQuery();
-    //                    }
-
-    //                    // Bulk Insert TopTerms
-    //                    if (record.top_terms != null)
-    //                    {
-    //                        var topTerms = ParseTopTerms(record.top_terms, record.Id);
-    //                        var topTermsQuery = new StringBuilder("INSERT INTO topterms (Id, OpenAlexRecordId, `Key`, Weight) VALUES ");
-
-    //                        var parameters = new List<MySqlParameter>();
-    //                        int paramIndex = 0;
-
-    //                        foreach (var term in topTerms)
-    //                        {
-    //                            topTermsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @Key{paramIndex}, @Weight{paramIndex}),");
-
-    //                            parameters.Add(new MySqlParameter($"@Id{paramIndex}", term.Id));
-    //                            parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
-    //                            parameters.Add(new MySqlParameter($"@Key{paramIndex}", term.Key));
-    //                            parameters.Add(new MySqlParameter($"@Weight{paramIndex}", term.Weight));
-
-    //                            paramIndex++;
-    //                        }
-
-    //                        // Remove trailing comma and execute
-    //                        topTermsQuery.Length--;
-    //                        topTermsQuery.Append(";");
-
-    //                        using (var command = new MySqlCommand(topTermsQuery.ToString(), connection, transaction))
-    //                        {
-    //                            command.Parameters.AddRange(parameters.ToArray());
-    //                            command.ExecuteNonQuery();
-    //                        }
-    //                    }
-
-    //                    // Bulk Insert TpConnections
-    //                    if (record.Tp_connections != null)
-    //                    {
-    //                        var tpConnectionsQuery = new StringBuilder("INSERT INTO tpconnections (Id, OpenAlexRecordId, SerialNo, Url, Weight, Topic) VALUES ");
-
-    //                        var parameters = new List<MySqlParameter>();
-    //                        int paramIndex = 0;
-
-    //                        foreach (var connectionItem in record.Tp_connections)
-    //                        {
-    //                            var tpConnections = ParseTpConnections(connectionItem, record.Id);
-
-    //                            if (tpConnections != null)
-    //                            {
-    //                                foreach (var tp in tpConnections)
-    //                                {
-    //                                    tpConnectionsQuery.Append($"(@Id{paramIndex}, @OpenAlexRecordId{paramIndex}, @SerialNo{paramIndex}, @Url{paramIndex}, @Weight{paramIndex}, @Topic{paramIndex}),");
-
-    //                                    parameters.Add(new MySqlParameter($"@Id{paramIndex}", tp.Id));
-    //                                    parameters.Add(new MySqlParameter($"@OpenAlexRecordId{paramIndex}", record.Id));
-    //                                    parameters.Add(new MySqlParameter($"@SerialNo{paramIndex}", tp.SerialNo));
-    //                                    parameters.Add(new MySqlParameter($"@Url{paramIndex}", tp.Url));
-    //                                    parameters.Add(new MySqlParameter($"@Weight{paramIndex}", tp.Weight));
-    //                                    parameters.Add(new MySqlParameter($"@Topic{paramIndex}", tp.Topic));
-
-    //                                    paramIndex++;
-    //                                }
-    //                            }
-    //                        }
-
-    //                        // Remove trailing comma and execute
-    //                        tpConnectionsQuery.Length--;
-    //                        tpConnectionsQuery.Append(";");
-
-    //                        using (var command = new MySqlCommand(tpConnectionsQuery.ToString(), connection, transaction))
-    //                        {
-    //                            command.Parameters.AddRange(parameters.ToArray());
-    //                            command.ExecuteNonQuery();
-    //                        }
-    //                    }
-    //                }
-
-    //                // Commit the transaction after processing all records
-    //                transaction.Commit();
+    //                AppendOpenAlexRecord(openAlexBatchQuery, record);
     //            }
-    //            catch (Exception ex)
+
+    //            if (openAlexBatchQuery.Length > 0)
     //            {
-    //                // Rollback in case of error
-    //                transaction.Rollback();
-    //                throw;
+    //                ExecuteBatchQuery(connection, transaction, openAlexBatchQuery.ToString());
     //            }
+
+    //            transaction.Commit();
+    //            recordCount += batch.Count();
     //        }
+    //        catch (Exception ex)
+    //        {
+    //            transaction.Rollback();
+    //            Console.WriteLine($"Batch failed: {ex.Message}");
+    //            throw;
+    //        }
+    //        Console.WriteLine($"Processed {recordCount} records successfully.");
     //    }
-
     //}
 
-    //public static List<TpConnection> ParseTpConnections(string rawData, Guid openAlexRecordId)
+    //private static void AppendOpenAlexRecord(StringBuilder queryBuilder, ViewOpenAlexRecordFromCSV record)
     //{
-    //    var result = new List<TpConnection>();
-
-    //    if (string.IsNullOrWhiteSpace(rawData))
-    //        return result;
-
-    //    // Split by comma-separated entries
-    //    var entries = rawData.Split(new[] { "], " }, StringSplitOptions.RemoveEmptyEntries);
-
-    //    foreach (var entry in entries)
+    //    if (queryBuilder.Length == 0)
     //    {
-    //        // Extract the serial number and the rest of the data
-    //        var parts = entry.Split(new[] { ": [" }, StringSplitOptions.RemoveEmptyEntries);
-    //        if (parts.Length == 2)
-    //        {
-    //            if (int.TryParse(parts[0].Trim(), out var serialNo))
-    //            {
-    //                // Further split the remaining data into URL, weight, and topic
-    //                var data = parts[1].Trim('[', ']', ' ').Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
-
-    //                if (data.Length == 3)
-    //                {
-    //                    var url = data[0].Trim('\'', '\"');
-    //                    var weightStr = data[1];
-    //                    var topic = data[2].Trim('\'', '\"');
-
-    //                    if (double.TryParse(weightStr, out var weight))
-    //                    {
-    //                        result.Add(new TpConnection
-    //                        {
-    //                            Id = Guid.NewGuid(), // Assign a unique identifier
-    //                            OpenAlexRecordId = openAlexRecordId, // Link to the parent record
-    //                            SerialNo = serialNo, // Assign the serial number
-    //                            Url = url, // Assign the URL
-    //                            Weight = weight, // Assign the weight
-    //                            Topic = topic // Assign the topic
-    //                        });
-    //                    }
-    //                }
-    //            }
-    //        }
+    //        queryBuilder.Append("INSERT INTO openalexrecords (Id, Unnamed_0, OpenAlex_id, Name, Profile, University, total_no_publications, orcid, no_publications_first_author, publications_list, vec, top_terms, keyterms, Tp_connections) VALUES ");
     //    }
 
-    //    return result;
+
+    //    int escapedUnnamed0 = record.Unnamed_0 ?? 0;
+    //    string escapedOpenAlexId =record.OpenAlex_id??"";
+    //    string escapedName = (record.Name)??"";
+    //    string escapedProfile = "";
+    //    string escapedUniversity = "";
+    //    int totalNoPublications = record.total_no_publications ?? 0;
+    //    string escapedOrcid = record.orcid??"";
+    //    int noPublicationsFirstAuthor = record.no_publications_first_author ?? 0;
+    //    string escapedPublicationsList = string.Join(",", record.publications_list ?? new List<string>());
+    //    string escapedVec = string.Join(",", record.vec ?? new List<double>());
+    //    string escapedTopTerms = ConvertToJsonString(record.top_terms);
+    //    string escapedKeyterms = ExtractTermsFromList(record.top_terms);
+    //    string escapedTpConnections = ParseTpConnectionsForQuery(record.Tp_connections, record.OpenAlex_id);
+
+    //    queryBuilder.AppendFormat("('{0}', {1}, '{2}', '{3}', '{4}', '{5}', {6}, '{7}', {8}, '{9}', '{10}', '{11}', '{12}', '{13}'),",
+    //        record.Id, escapedUnnamed0, escapedOpenAlexId, escapedName, escapedProfile, escapedUniversity,
+    //        totalNoPublications, escapedOrcid, noPublicationsFirstAuthor, escapedPublicationsList,
+    //        escapedVec, escapedTopTerms, escapedKeyterms, escapedTpConnections);
     //}
 
-    public static List<TpConnection> ParseTpConnections(string rawData, Guid openAlexRecordId)
+    //private static void ExecuteBatchQuery(MySqlConnection connection, MySqlTransaction transaction, string query)
+    //{
+    //    if (string.IsNullOrWhiteSpace(query)) return;
+
+    //    query = query.TrimEnd(',') + ";"; // Ensure valid SQL
+    //    using var command = new MySqlCommand(query, connection, transaction)
+    //    {
+    //        CommandTimeout = 300 // Adjust timeout as necessary
+    //    };
+    //    command.ExecuteNonQuery();
+    //}
+
+    private static string ParseTpConnectionsForQuery(List<string> input,string source)
     {
-        var result = new List<TpConnection>();
+    
+        if (input == null || input.Count == 0)
+            return "[]"; // Return an empty JSON array string if the input is empty
+        int lastSlashIndex = source.LastIndexOf('/');
 
-        if (string.IsNullOrWhiteSpace(rawData))
-            return result;
-
-        // Split by comma-separated entries (each connection block is delimited by "], ")
-        var entries = rawData.Split(new[] { "], " }, StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var entry in entries)
+        // Extract the substring after the last '/'
+        string result = source.Substring(lastSlashIndex + 1);
+        var formattedData = input.Select(item =>
         {
-            // Extract the serial number and the rest of the data
-            var parts = entry.Split(new[] { ": [" }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2)
+            // Remove square brackets and split by commas
+            var parts = item.Trim('[', ']').Split(new[] { ", " }, StringSplitOptions.None);
+
+            // Parse each part into the corresponding structure
+            return new
             {
-                if (int.TryParse(parts[0].Trim(), out var serialNo))
+                source= result,
+                target = parts[0].Trim('\''),
+                distance = double.Parse(parts[1]),
+                category = parts[2].Trim('\'')
+            };
+        }).ToList();
+
+        // Serialize the list of objects to a JSON string
+        return JsonSerializer.Serialize(formattedData);
+    
+    }
+
+    public static string ConvertToJsonString(List<string> input)
+    {
+        if (input == null || input.Count == 0)
+            return "[]";
+        try
+        {
+            // Process each item in the list to extract key and value pairs
+            var formattedData = input
+                .Select(line =>
                 {
-                    // Further split the remaining data into URL, weight, and topic
-                    var data = parts[1].Trim('[', ']', ' ').Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries);
-
-                    if (data.Length == 3)
+                    var parts = line.Split(':');
+                    if (parts.Length == 2)
                     {
-                        var url = data[0].Trim('\'', '\"');
-                        var weightStr = data[1].Trim();
-                        var topic = data[2].Trim('\'', '\"');
-
-                        if (double.TryParse(weightStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var weight))
-                        {
-                            result.Add(new TpConnection
-                            {
-                                Id = Guid.NewGuid(),
-                                OpenAlexRecordId = openAlexRecordId,
-                                SerialNo = serialNo,
-                                Url = url,
-                                Weight = weight,
-                                Topic = topic
-                            });
-                        }
+                        string keyTerm = parts[0].Trim('\'', ' ').Replace("\"", "\\\"");
+                        string value = parts[1].Trim();
+                        return $"{{\"keyTerm\":\"{keyTerm}\",\"value\":{value}}}";
                     }
-                }
-            }
+                    return null;
+                })
+                .Where(item => item != null) // Remove null entries
+                .ToList();
+
+            // Combine all formatted objects into a single JSON-like array string
+            return "[" + string.Join(",", formattedData) + "]";
         }
-
-        return result;
+        catch (Exception ex) { throw; }
     }
-
-    public static List<TopTerms> ParseTopTerms(List<string> inputData, Guid openAlexRecordId)
+    public static string ExtractTermsFromList(List<string> input)
     {
-        var result = new List<TopTerms>();
 
-        if (inputData == null || !inputData.Any())
-            return result;
-
-        foreach (var line in inputData)
+        if (input == null || input.Count == 0)
+            return "[]";
+        try
         {
-            // Split each line by colon into key and value
-            var parts = line.Split(':', 2); // Split into exactly two parts
-            if (parts.Length == 2)
-            {
-                // Clean up the key and value
-                var key = parts[0].Trim('\'', '\"', ' ', '\r', '\n');
-                var weightStr = parts[1].Trim();
+            // Process each item in the list to extract the term (key)
+            var terms = input
+                .Select(line => line.Split(':')[0].Trim('\'', ' ')) // Extract term (key) and trim quotes/spaces
+                .Distinct() // Remove duplicates
+                .ToList();
 
-                if (double.TryParse(weightStr, out var weight))
-                {
-                    result.Add(new TopTerms
-                    {
-                        Id = Guid.NewGuid(), // Assign a unique identifier
-                        OpenAlexRecordId = openAlexRecordId, // Link to the parent record
-                        Key = key, // Assign the key
-                        Weight = weight // Assign the weight
-                    });
-                }
-            }
+            // Convert the list of terms into a JSON-like string
+            return "[" + string.Join(",", terms.Select(term => $"\"{term}\"")) + "]";
         }
-
-        return result;
+        catch (Exception ex) { throw; }
     }
-
     public static List<string> ParseList(string input)
     {
         if (string.IsNullOrEmpty(input))
@@ -710,10 +341,6 @@ public class Program
             .Select(x => x.Trim().Trim('\'')) // Remove surrounding spaces and quotes
             .ToList();
     }
-
-    /// <summary>
-    /// Parses a comma-separated string into a list of doubles.
-    /// </summary>
     public static List<double> ParseVec(string input)
     {
         if (string.IsNullOrEmpty(input))
@@ -736,17 +363,36 @@ public class Program
             .Select(x => x.Trim()) // Trim each key-value pair
             .ToList();
     }
-
+   
     public static List<string> ParseTpConnections(string input)
     {
-        if (string.IsNullOrEmpty(input))
-            return new List<string>();
 
-        return input
-            .Trim('{', '}') // Remove surrounding braces
-            .Split('|') // Split by delimiter for key-value pairs
-            .Select(x => x.Trim()) // Trim each entry
-            .ToList();
+        if (string.IsNullOrWhiteSpace(input))
+            return new List<string>();
+        try
+        {
+            // Match entries like ['https://openalex.org/A5012838811', 0.3314645024565294, 'design']
+            var pattern = @"\['https://openalex.org/([A-Za-z0-9]+)', ([\d.]+), '([\w\s]+)'\]";
+            var matches = Regex.Matches(input, pattern);
+
+            // Format into desired structure
+            return matches
+                .Select(match => $"['{match.Groups[1].Value}', {match.Groups[2].Value}, '{match.Groups[3].Value}']")
+                .ToList();
+        }
+        catch (Exception ex) { throw; }
     }
 
-   }
+    //public static List<string> ParseTpConnections(string input)
+    //{
+    //    if (string.IsNullOrEmpty(input))
+    //        return new List<string>();
+
+    //    return input
+    //        .Trim('{', '}') // Remove surrounding braces
+    //        .Split('|') // Split by delimiter for key-value pairs
+    //        .Select(x => x.Trim()) // Trim each entry
+    //        .ToList();
+    //}
+
+}
