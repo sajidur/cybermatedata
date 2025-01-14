@@ -59,21 +59,41 @@ public class Program
             var inputCsvPath = "complete_data.csv";
 
             var records = ReadCsv(inputCsvPath);
+            int mx = 0;
+            foreach (var record in records)
+            {
 
-            //foreach (var record in records)
-            //{
-            //    Console.WriteLine(record.top_terms.Count);
-            //    foreach(var row in record.top_terms) { Console.WriteLine(row); }    
-            //    string x= ConvertToJsonString(record.top_terms);    
-            //    Console.WriteLine(x);
-            //    string k = ExtractTermsFromList(record.top_terms);
-            //    Console.WriteLine(k);   
-            //    break;
-            //}
+                if (record.OpenAlex_id == "https://openalex.org/A5014513107")
+                {
+                    Console.WriteLine(record.Tp_connections.Count);
+                }
+                //if (record.Tp_connections.Count == 10)
+                //{
+                //    mx++;
+                //    //foreach (var connection in record.Tp_connections)
+                //    //{
+                //    //    Console.WriteLine(connection);
+                //    //}
+                //}
+
+
+                //Console.WriteLine(record.top_terms.Count);
+                //foreach (var row in record.top_terms) { Console.WriteLine(row); }
+                //string x = ConvertToJsonString(record.top_terms);
+                //Console.WriteLine(x);
+                //string k = ExtractTermsFromList(record.top_terms);
+                //Console.WriteLine(k);
+                //if (record.Tp_connections.Count == 10)
+                //{
+                //    //Console.WriteLine(record.OpenAlex_id);
+                //    //break;
+                //}
+            }
+            Console.WriteLine(mx);
             string connectionString = "Server=MYSQL5050.site4now.net;Database=db_a66689_cyberma;Uid=a66689_cyberma;Pwd=Root@pass1;";
-            InsertDataIntoMySql(records, connectionString);
+           // InsertDataIntoMySql(records, connectionString);
 
-            Console.WriteLine("Data inserted into MySQL successfully!");
+           
         }
         catch (Exception ex)
         {
@@ -284,52 +304,94 @@ public class Program
         return JsonSerializer.Serialize(formattedData);
     
     }
-
     public static string ConvertToJsonString(List<string> input)
     {
         if (input == null || input.Count == 0)
-            return "[]";
-        try
-        {
-            // Process each item in the list to extract key and value pairs
-            var formattedData = input
-                .Select(line =>
-                {
-                    var parts = line.Split(':');
-                    if (parts.Length == 2)
-                    {
-                        string keyTerm = parts[0].Trim('\'', ' ').Replace("\"", "\\\"");
-                        string value = parts[1].Trim();
-                        return $"{{\"keyTerm\":\"{keyTerm}\",\"value\":{value}}}";
-                    }
-                    return null;
-                })
-                .Where(item => item != null) // Remove null entries
-                .ToList();
+            return "[]"; // Return empty JSON array if input is null or empty.
 
-            // Combine all formatted objects into a single JSON-like array string
-            return "[" + string.Join(",", formattedData) + "]";
-        }
-        catch (Exception ex) { throw; }
+        var formattedData = input
+            .Select(line =>
+            {
+                var parts = line.Split(':');
+                if (parts.Length == 2)
+                {
+                    string keyTerm = parts[0].Trim('\'', ' ').Replace("\"", "\\\""); // Escape quotes in the key.
+                    string value = parts[1].Trim().Replace("\"", "\\\""); // Escape quotes in the value.
+                    return $"{{\"keyTerm\":\"{keyTerm}\",\"value\":\"{value}\"}}"; // Ensure proper JSON structure.
+                }
+                return null;
+            })
+            .Where(item => item != null) // Remove null entries.
+            .ToList();
+
+        return "[" + string.Join(",", formattedData) + "]"; // Combine formatted data into a JSON array.
     }
+
     public static string ExtractTermsFromList(List<string> input)
     {
-
         if (input == null || input.Count == 0)
-            return "[]";
-        try
-        {
-            // Process each item in the list to extract the term (key)
-            var terms = input
-                .Select(line => line.Split(':')[0].Trim('\'', ' ')) // Extract term (key) and trim quotes/spaces
-                .Distinct() // Remove duplicates
-                .ToList();
+            return "[]"; // Return empty JSON array if input is null or empty.
 
-            // Convert the list of terms into a JSON-like string
-            return "[" + string.Join(",", terms.Select(term => $"\"{term}\"")) + "]";
-        }
-        catch (Exception ex) { throw; }
+        var terms = input
+            .Select(line =>
+            {
+                var parts = line.Split(':');
+                if (parts.Length > 0)
+                    return parts[0].Trim('\'', ' ').Replace("\"", "\\\""); // Extract key and escape quotes.
+                return null;
+            })
+            .Where(term => !string.IsNullOrEmpty(term)) // Remove null or empty terms.
+            .Distinct() // Ensure terms are unique.
+            .ToList();
+
+        return "[" + string.Join(",", terms.Select(term => $"\"{term}\"")) + "]"; // Convert terms into a JSON array.
     }
+
+    //public static string ConvertToJsonString(List<string> input)
+    //{
+    //    if (input == null || input.Count == 0)
+    //        return "[]";
+    //    try
+    //    {
+    //        // Process each item in the list to extract key and value pairs
+    //        var formattedData = input
+    //            .Select(line =>
+    //            {
+    //                var parts = line.Split(':');
+    //                if (parts.Length == 2)
+    //                {
+    //                    string keyTerm = parts[0].Trim('\'', ' ').Replace("\"", "\\\"");
+    //                    string value = parts[1].Trim();
+    //                    return $"{{\"keyTerm\":\"{keyTerm}\",\"value\":{value}}}";
+    //                }
+    //                return null;
+    //            })
+    //            .Where(item => item != null) // Remove null entries
+    //            .ToList();
+
+    //        // Combine all formatted objects into a single JSON-like array string
+    //        return "[" + string.Join(",", formattedData) + "]";
+    //    }
+    //    catch (Exception ex) { throw; }
+    //}
+    //public static string ExtractTermsFromList(List<string> input)
+    //{
+
+    //    if (input == null || input.Count == 0)
+    //        return "[]";
+    //    try
+    //    {
+    //        // Process each item in the list to extract the term (key)
+    //        var terms = input
+    //            .Select(line => line.Split(':')[0].Trim('\'', ' ')) // Extract term (key) and trim quotes/spaces
+    //            .Distinct() // Remove duplicates
+    //            .ToList();
+
+    //        // Convert the list of terms into a JSON-like string
+    //        return "[" + string.Join(",", terms.Select(term => $"\"{term}\"")) + "]";
+    //    }
+    //    catch (Exception ex) { throw; }
+    //}
     public static List<string> ParseList(string input)
     {
         if (string.IsNullOrEmpty(input))
