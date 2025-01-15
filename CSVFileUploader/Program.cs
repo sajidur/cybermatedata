@@ -41,7 +41,11 @@ public class AuthorData
     public string Year { get; set; }
     public string Title { get; set; }   
 }
-
+public class Data
+{
+    public string OpenAlex_id { get; set; }
+    public string publication_list { get; set; }
+}
 public class OpenAlexRecord
 {
     public Guid Id { get; set; }
@@ -71,25 +75,30 @@ public class Program
 
             var inputCsvPath = "complete_data.csv";
             string openAlex = "",pub_url="",titles,years,universities;
-            var records = ReadCsv(inputCsvPath);
+            //var records = ReadCsv(inputCsvPath);
             var openAlexIds=new HashSet<string>();
             var tyear = new TPYear();
-            var data=new List<TPYear>();  
-            var authorList=new HashSet<AuthorData>(); 
+            var data=new List<TPYear>();
+            string connectionString = "Server=MYSQL5050.site4now.net;Database=db_a66689_cyberma;Uid=a66689_cyberma;Pwd=Root@pass1;";
             var author=new AuthorData();
-            foreach (var record in records)
+            //foreach (var record in records)
+            //{
+                var authorList = new HashSet<AuthorData>();
+            //if (string.IsNullOrWhiteSpace(record.OpenAlex_id) || openAlexIds.Contains(record.OpenAlex_id))
+            //{
+            //    continue;
+            //}
+            while (true)
             {
-
-                if (string.IsNullOrWhiteSpace(record.OpenAlex_id) || openAlexIds.Contains(record.OpenAlex_id))
-                {
-                    continue;
-                }
+                var record = GetSingleRecordWithNullValues(connectionString);
+                if (record == null) { break; }
                 openAlexIds.Add(record.OpenAlex_id);
-                openAlex=$"https://api.openalex.org/people/{record.OpenAlex_id?.Split('/').LastOrDefault()}";
+                openAlex = $"https://api.openalex.org/people/{record.OpenAlex_id?.Split('/').LastOrDefault()}";
                 universities = await GetUniversities(openAlex);
                 if (string.IsNullOrWhiteSpace(universities)) { continue; }
                 var pub_list = new HashSet<string>();
-                foreach(var publication in record.publications_list)
+                List<string> urlList = record.publication_list.Split(',').ToList();
+                foreach (var publication in urlList)
                 {
                     if (string.IsNullOrWhiteSpace(publication) || pub_list.Contains(publication))
                     {
@@ -97,7 +106,7 @@ public class Program
                     }
 
                     pub_list.Add(publication);
-                     pub_url = $"https://api.openalex.org/works/{publication?.Split('/').LastOrDefault()}";
+                    pub_url = $"https://api.openalex.org/works/{publication?.Split('/').LastOrDefault()}";
                     tyear = await GetFormattedData(pub_url);
                     if (tyear != null)
                     {
@@ -111,7 +120,7 @@ public class Program
                 years = data.Any()
                     ? JsonSerializer.Serialize(data.Select(d => d.Year).ToList(), new JsonSerializerOptions { WriteIndented = true })
                     : null;
-               author = new AuthorData
+                author = new AuthorData
                 {
                     Id = record.OpenAlex_id,
                     Title = titles,
@@ -120,12 +129,14 @@ public class Program
                 };
 
                 authorList.Add(author);
+                UpdateDataInMySql(authorList, connectionString);
             }
-            Console.WriteLine(authorList.Count);    
+          //  }
+            //Console.WriteLine(authorList.Count);    
            
-            string connectionString = "Server=MYSQL5050.site4now.net;Database=db_a66689_cyberma;Uid=a66689_cyberma;Pwd=Root@pass1;";
+        
             // InsertDataIntoMySql(records, connectionString);
-            //UpdateDataInMySql(authorList, connectionString);
+            
 
 
         }
@@ -235,6 +246,33 @@ public class Program
        Console.WriteLine($"Failed to fetch data. HTTP Status: {response.StatusCode}");
             return null;
         
+    }
+    public static Data GetSingleRecordWithNullValues(string connectionString)
+    {
+        const string query = @"
+            SELECT OpenAlex_id, publications_list
+            FROM openalexrecords
+            WHERE Year IS NULL OR Title IS NULL OR University IS NULL
+            LIMIT 1"; // Retrieve only a single record
+
+        using var connection = new MySqlConnection(connectionString);
+        connection.Open();
+
+        using var command = new MySqlCommand(query, connection);
+        command.CommandTimeout = 300; // Optional: Adjust timeout if necessary
+
+        using var reader = command.ExecuteReader();
+        if (reader.Read())
+        {
+            return new Data
+            {
+                OpenAlex_id = reader["OpenAlex_id"]?.ToString(),
+                publication_list = reader["publications_list"]?.ToString()
+            };
+        }
+
+        // Return null if no record is found
+        return null;
     }
 
     public static List<ViewOpenAlexRecordFromCSV> ReadCsv(string inputCsvPath)
@@ -366,6 +404,9 @@ public class Program
                 Console.WriteLine($"Batch failed: {ex.Message}");
                 throw;
             }
+            finally{
+                connection.Close(); 
+            }
         }
     }
 
@@ -388,7 +429,7 @@ public class Program
 
         command.Parameters.AddWithValue("@Id", record.Id);
        
-        command.Parameters.AddWithValue("@University", "");
+        command.Parameters.AddWithValue("@University", record.University);
       
         command.Parameters.AddWithValue("@Year", record.Year);
         command.Parameters.AddWithValue("@Title", record.Title);
