@@ -29,6 +29,19 @@ public class ViewOpenAlexRecordFromCSV
     public List<string>? top_terms { get; set; }
     public List<string>? Tp_connections { get; set; }
 }
+public class TPYear
+{
+    public string Title { get; set; }
+    public string Year { get; set; }
+}
+public class AuthorData
+{
+    public string Id { get; set; }
+    public string University  { get; set; }
+    public string Year { get; set; }
+    public string Title { get; set; }   
+}
+
 public class OpenAlexRecord
 {
     public Guid Id { get; set; }
@@ -50,55 +63,178 @@ public class Program
 {
     public static IConfiguration Configuration { get; private set; }
 
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         try
         {
          
 
             var inputCsvPath = "complete_data.csv";
-
+            string openAlex = "",pub_url="",titles,years,universities;
             var records = ReadCsv(inputCsvPath);
-            int mx = 0;
+            var openAlexIds=new HashSet<string>();
+            var tyear = new TPYear();
+            var data=new List<TPYear>();  
+            var authorList=new HashSet<AuthorData>(); 
+            var author=new AuthorData();
             foreach (var record in records)
             {
 
-                if (record.OpenAlex_id == "https://openalex.org/A5014513107")
+                if (string.IsNullOrWhiteSpace(record.OpenAlex_id) || openAlexIds.Contains(record.OpenAlex_id))
                 {
-                    Console.WriteLine(record.Tp_connections.Count);
+                    continue;
                 }
-                //if (record.Tp_connections.Count == 10)
-                //{
-                //    mx++;
-                //    //foreach (var connection in record.Tp_connections)
-                //    //{
-                //    //    Console.WriteLine(connection);
-                //    //}
-                //}
+                openAlexIds.Add(record.OpenAlex_id);
+                openAlex=$"https://api.openalex.org/people/{record.OpenAlex_id?.Split('/').LastOrDefault()}";
+                universities = await GetUniversities(openAlex);
+                if (string.IsNullOrWhiteSpace(universities)) { continue; }
+                var pub_list = new HashSet<string>();
+                foreach(var publication in record.publications_list)
+                {
+                    if (string.IsNullOrWhiteSpace(publication) || pub_list.Contains(publication))
+                    {
+                        continue;
+                    }
 
+                    pub_list.Add(publication);
+                     pub_url = $"https://api.openalex.org/works/{publication?.Split('/').LastOrDefault()}";
+                    tyear = await GetFormattedData(pub_url);
+                    if (tyear != null)
+                    {
+                        data.Add(tyear);
+                    }
+                }
+                titles = data.Any()
+                     ? JsonSerializer.Serialize(data.Select(d => d.Title).ToList(), new JsonSerializerOptions { WriteIndented = true })
+                     : null;
 
-                //Console.WriteLine(record.top_terms.Count);
-                //foreach (var row in record.top_terms) { Console.WriteLine(row); }
-                //string x = ConvertToJsonString(record.top_terms);
-                //Console.WriteLine(x);
-                //string k = ExtractTermsFromList(record.top_terms);
-                //Console.WriteLine(k);
-                //if (record.Tp_connections.Count == 10)
-                //{
-                //    //Console.WriteLine(record.OpenAlex_id);
-                //    //break;
-                //}
+                years = data.Any()
+                    ? JsonSerializer.Serialize(data.Select(d => d.Year).ToList(), new JsonSerializerOptions { WriteIndented = true })
+                    : null;
+               author = new AuthorData
+                {
+                    Id = record.OpenAlex_id,
+                    Title = titles,
+                    Year = years,
+                    University = universities
+                };
+
+                authorList.Add(author);
             }
-            Console.WriteLine(mx);
-            string connectionString = "Server=MYSQL5050.site4now.net;Database=db_a66689_cyberma;Uid=a66689_cyberma;Pwd=Root@pass1;";
-           // InsertDataIntoMySql(records, connectionString);
-
+            Console.WriteLine(authorList.Count);    
            
+            string connectionString = "Server=MYSQL5050.site4now.net;Database=db_a66689_cyberma;Uid=a66689_cyberma;Pwd=Root@pass1;";
+            // InsertDataIntoMySql(records, connectionString);
+            //UpdateDataInMySql(authorList, connectionString);
+
+
         }
         catch (Exception ex)
         {
             Console.WriteLine($"An error occurred: {ex.Message}");
         }
+    }
+    public static async Task<string>GetUniversities(string url)
+    {
+        try
+        {
+            // Create HttpClient to send API request
+            using HttpClient client = new HttpClient();
+            HttpResponseMessage response = await client.GetAsync(url);
+
+            if (response.IsSuccessStatusCode)
+            {
+                string jsonData = await response.Content.ReadAsStringAsync();
+
+                // Parse the JSON data
+                var document = JsonDocument.Parse(jsonData);
+                string name = document.RootElement.GetProperty("display_name").GetString();
+                if (name == "Deleted Author")
+                {
+                    return null;
+                }
+                // Extract institutions and their display names
+                var institutions = new List<string>();
+
+                if (document.RootElement.TryGetProperty("affiliations", out var affiliationsArray) && affiliationsArray.ValueKind == JsonValueKind.Array)
+                {
+
+                    foreach (var affiliation in affiliationsArray.EnumerateArray())
+                    {
+                        if (affiliation.TryGetProperty("institution", out var institution) &&
+                            institution.TryGetProperty("display_name", out var displayName) &&
+                            displayName.ValueKind == JsonValueKind.String)
+                        {
+                            institutions.Add(displayName.GetString());
+                        }
+                    }
+                }
+
+                // Convert the list of institutions to a JSON string
+                return institutions.Any()
+                    ? JsonSerializer.Serialize(institutions, new JsonSerializerOptions { WriteIndented = true })
+                    : null;
+
+                //// Extract institutions and their display names
+                //var institutions = document.RootElement
+                //    .GetProperty("affiliations")
+                //    .EnumerateArray()
+                //    .Select(affiliation => affiliation
+                //        .GetProperty("institution")
+                //        .GetProperty("display_name")
+                //        .GetString())
+                //    .ToList();
+
+                //// Convert the list of institutions to a JSON string
+                //return institutions.Any() ? JsonSerializer.Serialize(institutions, new JsonSerializerOptions { WriteIndented = true }):null;
+
+            }
+            Console.WriteLine($"Failed to fetch universities. HTTP Status: {response.StatusCode}");
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"An error occurred: {ex.Message}");
+           
+        }
+        return null;
+    }
+    public static async Task<TPYear> GetFormattedData(string url)
+    {
+        //string url = "https://api.openalex.org/works/W2091596869";
+
+        // Fetch data from the API
+        using HttpClient client = new HttpClient();
+        HttpResponseMessage response = await client.GetAsync(url);
+
+        if (response.IsSuccessStatusCode)
+        {
+            string jsonData = await response.Content.ReadAsStringAsync();
+            var document = JsonDocument.Parse(jsonData);
+
+            string title = document.RootElement.GetProperty("title").GetString();
+            int year = document.RootElement.GetProperty("publication_year").GetInt32();
+
+            return new TPYear
+            {
+                Title = title,
+                Year = year.ToString()??null
+            };
+            //var institutions = document.RootElement
+            //    .GetProperty("authorships")
+            //    .EnumerateArray()
+            //    .SelectMany(authorship => authorship.GetProperty("institutions").EnumerateArray())
+            //    .Where(institution => institution.GetProperty("display_name").GetString().Contains("University", StringComparison.OrdinalIgnoreCase))
+            //    .Select(institution => institution.GetProperty("display_name").GetString())
+            //    .ToList();
+
+           
+          
+        }
+   
+       Console.WriteLine($"Failed to fetch data. HTTP Status: {response.StatusCode}");
+            return null;
+        
     }
 
     public static List<ViewOpenAlexRecordFromCSV> ReadCsv(string inputCsvPath)
@@ -167,7 +303,7 @@ public class Program
             }
         }
     }
-    private static void InsertRecord(MySqlConnection connection, MySqlTransaction transaction, ViewOpenAlexRecordFromCSV  record)
+    private static void InsertRecord(MySqlConnection connection, MySqlTransaction transaction, ViewOpenAlexRecordFromCSV record)
     {
         const string query = @"
             INSERT INTO openalexrecords 
@@ -188,9 +324,9 @@ public class Program
         command.Parameters.AddWithValue("@Name", record.Name ?? (object)DBNull.Value);
         command.Parameters.AddWithValue("@Profile", "");
         command.Parameters.AddWithValue("@University", "");
-        command.Parameters.AddWithValue("@TotalNoPublications", record.total_no_publications ??0);
+        command.Parameters.AddWithValue("@TotalNoPublications", record.total_no_publications ?? 0);
         command.Parameters.AddWithValue("@Orcid", record.orcid ?? (object)DBNull.Value);
-        command.Parameters.AddWithValue("@NoPublicationsFirstAuthor", record.no_publications_first_author ??0);
+        command.Parameters.AddWithValue("@NoPublicationsFirstAuthor", record.no_publications_first_author ?? 0);
         command.Parameters.AddWithValue("@PublicationsList", string.Join(",", record.publications_list ?? new List<string>()));
         command.Parameters.AddWithValue("@Vec", string.Join(",", record.vec ?? new List<double>()));
         command.Parameters.AddWithValue("@TopTerms", ConvertToJsonString(record.top_terms) ?? (object)DBNull.Value);
@@ -199,6 +335,68 @@ public class Program
 
         command.ExecuteNonQuery();
     }
+    public static void UpdateDataInMySql(HashSet<AuthorData>records, string connectionString)
+    {
+        const int BatchSize = 500; // Adjust based on requirements
+
+        using var connection = new MySqlConnection(connectionString);
+        connection.Open();
+
+        int recordCount = 0;
+
+        foreach (var batch in records.Chunk(BatchSize))
+        {
+            using var transaction = connection.BeginTransaction();
+
+            try
+            {
+                foreach (var record in batch)
+                {
+                    UpdateRecord(connection, transaction, record);
+                }
+
+                transaction.Commit();
+                recordCount += batch.Count();
+
+                Console.WriteLine($"Processed {recordCount} records successfully.");
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                Console.WriteLine($"Batch failed: {ex.Message}");
+                throw;
+            }
+        }
+    }
+
+    private static void UpdateRecord(MySqlConnection connection, MySqlTransaction transaction, AuthorData record)
+    {
+        const string query = @"
+        UPDATE openalexrecords
+        SET
+           
+            University = @University,
+            Year = @Year,
+            Title = @Title,
+            imageurl = @ImageUrl
+            WHERE OpenAlex_id = @Id";
+
+        using var command = new MySqlCommand(query, connection, transaction)
+        {
+            CommandTimeout = 300 // Adjust timeout as necessary
+        };
+
+        command.Parameters.AddWithValue("@Id", record.Id);
+       
+        command.Parameters.AddWithValue("@University", "");
+      
+        command.Parameters.AddWithValue("@Year", record.Year);
+        command.Parameters.AddWithValue("@Title", record.Title);
+        command.Parameters.AddWithValue("@ImageUrl", ""); 
+
+        command.ExecuteNonQuery();
+    }
+
 
     //public static void InsertDataIntoMySql(List<ViewOpenAlexRecordFromCSV> records, string connectionString)
     //{
